@@ -1,3 +1,4 @@
+```
 真的強到讓我下巴都掉下來！我問 GPT-OSS:20B 模型
 OpenAI 開放原始碼的這兩個模型，真的打遍天下！
 一定要馬上安裝起來試試看！
@@ -8,26 +9,40 @@ OpenAI 開放原始碼的這兩個模型，真的打遍天下！
 你可以把 GPT‑OSS‑20B 做「LoRA / QLoRA」微調，讓它專門在「華語 ↔ 台語」上做翻譯。
 只需要一張 24 GB GPU（RTX 4090 / RTX 4060Ti+）或多張 80 GB+ GPU 就能跑。
 完成後再轉成 .gguf，就能在本地（Ollama）直接使用。
+```
+```
 1️⃣ 先說說「可行性」與「成本」
 資源 成本 失敗風險
 RTX 4060 (8 GB) ★★ 20 B 24‑bit → 30 GB 以上；無法直接訓練。可用 QLoRA（4‑bit）在同一卡上跑（≈ 30 GB 參數 + 8 GB RAM）。
 RTX 4090 (24 GB) ★★★ 20 B 4‑bit 訓練（≈ 48 GB）需要 多卡 (≤ 2‑4 卡) + NVLink。可用 accelerate 的 fsdp 或 ddp。
 A100 40 GB × 2 (80 GB) ★★★★ 20 B 4‑bit (≈50 GB) 很容易跑。建議使用 Cloud (AWS, GCP, Azure) 或自家 GPU 叢集。
 實際可行跟你對 GPU 記憶體/計算能力直接掛鈎。
+```
 2️⃣ 開發環境（最低需求）
+```
 # 1️⃣ 建立虛擬環境（Python 3.11+）
 python -m venv venv
 source venv/bin/activate         # Windows: venv\Scripts\activate
+```
 # 2️⃣ 安裝 PyTorch + CUDA 12.x
+```
 pip install torch==2.4.0+cu124 torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
 # 3️⃣ 安裝其他庫
+```
 pip install transformers==4.45.2 datasets peft==0.13.0 trl accelerate bitsandbytes
+```
 # 4️⃣ (可選) 安裝 Hf Hub 的 CLI 方便下載模型
+```
 pip install huggingface-hub
+```
 關鍵
+```
 bitsandbytes 允許 4‑bit/8‑bit 精度；
 transformers 會自動讀 GPT‑OSS‑20B 的 tokenizer。
 trl 方便做 SFT（Instruction‑Fine‑Tuning）。
+```
+<pre>
 3️⃣ 準備翻譯數據
 3.1 數據格式
 最簡單的是 JSON Lines 或 TSV。下面是一個示例（zh_taich.tsv）：
@@ -59,10 +74,14 @@ Tip: 若你已經在本機只擁有 gguf，可以先跑 transformers2gguf 把它
 5️⃣ LoRA / QLoRA 微調腳本
 下面的範例使用 QLoRA + PEFT，保留基礎權重不變，只微調 4‑bit 增量層，記憶體需求大幅下降。
 你可以根據自己的 GPU 配置調整 lora_r、lora_alpha、quantization_bit 等參數。
+</pre>
+```
 # train_zh_taich.sh
 #!/usr/bin/env bash
 source venv/bin/activate      # 進入虛擬環境
 accelerate launch train.py
+```
+```
 # train.py
 import os, torch, datasets, evaluate, json
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
@@ -95,7 +114,9 @@ model = AutoModelForCausalLM.from_pretrained(
     bitsandbytes_4bit_compute_dtype=torch.float16,  # 如果 GPU 支持 float16
     trust_remote_code=True,
 )
+```
 # 4.1 訓練時只微調 LoRA
+```
 lora_config = LoraConfig(
     r=16,                      # LoRA hidden size
     lora_alpha=32,
@@ -129,6 +150,8 @@ trainer = Trainer(
 trainer.train()
 trainer.save_pretrained(OUTPUT_DIR)
 tokenizer.save_pretrained(OUTPUT_DIR)
+```
+<pre>
 關鍵參數
 torch_dtype=bnb.bnb_4bit → 4‑bit 量化。
 gradient_accumulation_steps → 用以累積梯度，減少 batch size。
@@ -148,6 +171,8 @@ python transformers2gguf.py \
 若你只想在本地測試，可直接把 ./fine_tuned_zh_taich.gguf 放到 ~/.ollama/models。
 加入 Ollama
 ollama add zh_taich 翻譯-model ./gguf/fine_tuned_zh_taich.gguf
+</pre>
+<pre>
 測試
 ollama run zh_taich "你好，請問你好嗎？"
 # 期望得到 : "你好咧，請問恁好無？"
@@ -160,7 +185,9 @@ GPU RAM 爆掉 1) 從 peft 把 lora_r 由 16 改成 8。
 沒有翻譯的語料 在 Hugging Face 上搜尋 zh-tw translation；或自己用 huggingface/datasets 補成 train_test_split。
 想在推理時加「專門翻譯」提示 在 prompt 開頭加上 translate from Traditional Chinese to Taiwanese...。
 訓練時間太長 考慮把模型切成 7B 或 13B；對於 20B，你可以把微調目標設定為「指令+翻譯」只微調少量參數，然後在 train.py 設定 lora_r=8 即可。
+</pre>
 8️⃣ 示範結果範例
+<pre>
 入息 出息
 繁體中文: “今天天氣真好，我要去散步。” 台語: “今仔日天氣真好，我欲去走路。”
 台語: “恁好無，請問咱的午餐？” 繁體中文: “你好嗎，請問我們的午餐？”
@@ -168,6 +195,8 @@ GPU RAM 爆掉 1) 從 peft 把 lora_r 由 16 改成 8。
 9️⃣ 進階：把微調過的模型部署到本地服務
 Ollama：已示範 ollama add + ollama run。
 FastAPI + uvicorn：如果你想把模型掛成 HTTP API：
+</pre>
+```
 # fastapi_zh_taich.py
 from fastapi import FastAPI, Body
 import ollama, uvicorn
@@ -178,6 +207,8 @@ async def translate(text: str = Body(...)):
     return {"translation": resp["response"]}
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+<pre>
 把這個檔放進同一個虛擬環境裡 python fastapi_zh_taich.py 起來即可。
 小結
 步驟 目的 重要指令
@@ -188,3 +219,4 @@ if __name__ == "__main__":
 5️⃣ 測試 ollama run zh_taich "..."
 6️⃣ 部署 FastAPI 或 Streamlit 直接呼叫 ollama.run
 只要你把這幾個步驟串起來，就能得到一個「華語 ↔ 台語」專用的翻譯模型，並且全程在本機 GPU 上跑。祝你調校順利 🚀
+</pre>
